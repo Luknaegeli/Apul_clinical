@@ -1,0 +1,31 @@
+Isolate_ID;origin;season;isolation_fungicide;Isolate_name
+1;leaf;autumn;Flint (Trifloxystrobin);LF3.10
+3;leaf;autumn;Captan 80 WD (CPN);LC1.9
+4;leaf;autumn;Captan 80 WD (CPN);LC1.3
+5;leaf;autumn;Captan 80 WD (CPN);LC5.2
+6;leaf;autumn;Chorus (CYP);LCH2.1
+7;leaf;autumn;Chorus (CYP);LCH10.2
+8;leaf;autumn;Chorus (CYP);LCH5.9
+9;leaf;autumn;Slick (DFN);LSK10.4
+10;leaf;autumn;Slick (DFN);LSK2.11
+18;leaf;autumn;Flint (Trifloxystrobin);LF5.11
+19;leaf;autumn;Flint (Trifloxystrobin);LF5.16
+30;leaf;autumn;Flint (Trifloxystrobin);LF5.10
+100;leaf;winter;Slick (DFN);FLSK5.1
+195;flower;spring;Amphotericin B;AF4.1a
+198;leaf;summer;Captan 80 WD (CPN);CaL1.1
+199;flower;spring;Chorus (CYP);ChF4.2
+203;flower;spring;Capsofungin;CnF4.2
+211;flower;spring;none;F2
+214;leaf;spring;Fluconazole;FLF4.3
+220;leaf;spring;Fluconazole;FLS4a
+287;leaf;summer;Amphotericin B;AL4e
+290;leaf;summer;Capsofungin;CnL4a
+343;fruit;summer;Capsofungin;CnFr4.4
+351;fruit;summer;none;Fr2
+353;fruit;summer;none;Fr1
+355;flower;summer;Amphotericin B;AF4.1b
+356;leaf;summer;Fluconazole;FL4.31
+393;fruit;summer;Flint (Trifloxystrobin);FFr4.3
+423;fruit;summer;Slick (DFN);SFr4.3
+425;fruit;summer;Captan 80 WD (CPN);CaFr2.1

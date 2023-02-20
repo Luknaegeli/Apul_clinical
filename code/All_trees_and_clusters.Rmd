@@ -1,0 +1,409 @@
+---
+title: "All_tree_and_groups"
+author: "Lukas Nägeli"
+date: "22 4 2022"
+output: html_document
+---
+
+## R script for clusters and Trees
+```{r setup-chunk, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,
+                      cache = FALSE,
+                      fig.path = "../figures/")
+```
+
+### General Data and package loading
+```{r,Packages,message=FALSE,fig.fullwidth = TRUE}
+
+############ Packeges ############
+rm(list=ls()) #clear whole work space
+set.seed(1234)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(ggtree)
+library(readxl)
+library(reshape2)
+library(phytools)
+library(ggpubr)
+library(FSA)
+library(RColorBrewer)
+library(forcats)
+############ Packeges ############
+my_col2 <- brewer.pal(6,"Dark2")
+my_col3 <- c(my_col2[2],
+             my_col2[1],
+             my_col2[3],
+             my_col2[5],
+             my_col2[4],
+             my_col2[6])
+
+```
+### MIC50 data loading
+```{r,MIC_50,message=FALSE,fig.fullwidth = TRUE}
+# MIC50 values from clinical isolates
+MIC50.clin <- read_xlsx("../data/MIC50_clean.xlsx")
+
+# MIC50 values from agricultural isolates
+MIC50.agr <- read.csv("../data//MIC50_agr.csv", sep=";")
+
+# Metadata for clinical isolates
+isolate_info_clin <- read_excel("../data/Isolate_info_clin.xlsx")
+
+# Metadata for agricultural isolates
+isolate_info <- read.csv("../data/Isolate_info.csv", sep=";")
+isolate_info$Isolate_ID[which(isolate_info$Isolate_ID == "214")] <- 241 #correcting Spelling mistake
+
+# merging the two MIC50 values
+MIC50.agr <- merge(isolate_info[,c("Isolate_ID","Isolate_name")] ,MIC50.agr, by.x = "Isolate_name", by.y = "Isolate_name", all.x = TRUE)
+colnames(MIC50.clin)[c(1,2)] <- c("Isolate_ID", "Isolate_name")
+MIC50.agr <- MIC50.agr[,colnames(MIC50.agr)[c(2,1,3:5)]]
+colnames(MIC50.agr) <- colnames(MIC50.clin)
+All_MIC50_wide <- rbind(MIC50.agr, MIC50.clin)
+
+
+All_MIC50 <- melt(All_MIC50_wide, id.vars = colnames(All_MIC50_wide)[c(1,2)], variable.name = "Fungicide", value.name = "MIC50")
+
+#### remove outlier #####
+# All_MIC50 <- All_MIC50[-which(All_MIC50$Isolate_name %in% c("AL4e","LC5.2") & All_MIC50$Fungicide == "MIC50.CYP") ,]
+
+### Adjusting outlier to max value tested ###
+All_MIC50[which(All_MIC50$Isolate_name %in% c("AL4e", "LC5.2") & All_MIC50$Fungicide == "Cyprodinil"),"MIC50"] <- 128
+
+
+```
+
+### Isolate metadata loading
+```{r, Meta_data_merge ,message=FALSE,fig.fullwidth = TRUE}
+### adding metadata ###
+isolate_info_clin$season <- "unknown"
+isolate_info_clin$isolation_fungicide <- "None"
+isolate_info_clin$group <- "clinical"
+
+isolate_info$group <- "agricultural"
+isolate_info$source <- "waedenswil"
+
+# merging metadata
+isolate_info_clin <- isolate_info_clin[,colnames(isolate_info)]
+
+All_isolate_info <- rbind(isolate_info_clin,isolate_info)
+
+
+# Adding other Aureobasidium (references) Metadata
+# (check for file names if it throws an error down the line)
+Other_variants <- c("Aureobasidium_pullulans_var_namibiae_masked_contig" ,
+                    "Aureobasidium_pullulans_var_melanogenum_masked_contig",
+                    "Aurpu_var_sub1_masked_contig",
+                    "Aureobasidium_pullulans_var_pullulans_masked_contig")
+
+
+Other_var_names <- c("A. namibiae", "A. melanogenum","A. subglaciale","EXF-150")
+
+Other_var_df <- data.frame(A=Other_variants,B=NA,C=NA,D=NA,E=Other_var_names, G ="reference", H = "JGI")
+colnames(Other_var_df) <- colnames(All_isolate_info)
+
+```
+
+### Tree clinical vs agricultural isolates
+```{r, trees-clin-vs-agr}
+# Loading the tree
+tree <- read.tree("../data/221111_phame_all_final_RaxML/results/trees/RAxML_bipartitions.221111_Apul_final_RaxML_all_best")
+
+### Tip label correction
+tip_lab <- tree$tip.label
+tree_isolate_info <- All_isolate_info[,c("Isolate_ID","Isolate_name")]
+tree_isolate_info$Isolate_ID <- paste(tree_isolate_info$Isolate_ID,
+                                      "_contigs_contig", 
+                                      sep = "")
+tree_isolate_info  <- rbind(tree_isolate_info , Other_var_df[,c(1,5)])
+tree_isolate_info  <- rbind(tree_isolate_info , c("AurpulNBB1_AssemblyScaffolds_Repeatmasked","NBB_7.2.1"))
+tip_lab  <- merge(as.data.frame(tip_lab),tree_isolate_info ,by.x = "tip_lab",by.y = "Isolate_ID", all.x = TRUE)
+tree$tip.label <- tip_lab[[2]][match(tree$tip.label, tip_lab[[1]])]
+
+# Reference added to meta data
+All_isolate_info <- rbind(All_isolate_info,c("AurpulNBB1_AssemblyScaffolds_Repeatmasked",NA,NA,NA,"NBB_7.2.1", "reference", "JGI"))
+All_isolate_info <- rbind(All_isolate_info,Other_var_df)
+
+
+# clinical vs agricultural in group info
+group_info <- split(All_isolate_info$Isolate_name, All_isolate_info$group)
+tree <- groupOTU(tree,group_info)
+
+# extracting bootstrap values for labeling
+bootstrap <- as.numeric(tree$node.label)
+bootstrap[which(bootstrap < 90)] <- NA #removing bootstrap below 90%
+bootstrap <- c(rep(NA, times = 51),bootstrap)
+
+
+# plotting the tree
+p <- ggtree(tree, aes(color = group)) + 
+      theme_tree2() + 
+      geom_nodelab(aes(label = bootstrap), hjust =1.3, vjust = -0.3, size = 2.5) +
+      geom_tiplab(hjust = 0, size = 3, vjust = 0.5) +
+      labs(title = "Phylogenetic Tree with all SNP's and all isolates") +
+      xlim(0,1.1)
+p
+
+# collaping other variant clade 
+cp <- collapse(p + xlim(0,0.11) + labs(title = "Phylogenetic Tree with all SNP's and all isolates with collapsed node"), node=85)
+cp
+# viewClade(p + labs(title = "Phylogenetic Tree with all SNP's and all isolates the collapsed node"), node = 72)
+```
+
+### Clustering
+```{r, clusters}
+
+# extracting phylogenetic distance form the tree
+phylo.dist <- cophenetic.phylo(tree)
+dist2 <- as.matrix(dist(phylo.dist, method = "euclidean"))
+
+# hierarchical clustering with generating two clusters (a. pullulans vs non A. pullulans)
+hc <- hclust(dist(phylo.dist, method = "euclidean"), method = "complete")
+hccut <- as.data.frame(cutree(hc, k = 2))
+All_isolate_info$cluster <- as.factor(hccut[,1][match(All_isolate_info$Isolate_name, 
+                                                      rownames(hccut))])
+
+# removing non A. pullulans form distance matrix
+phylo.dist.pul <- phylo.dist[-which(rownames(phylo.dist) %in% 
+                                      All_isolate_info$Isolate_name[which(All_isolate_info$cluster == 2)]),
+                             -which(colnames(phylo.dist) %in% 
+                                      All_isolate_info$Isolate_name[which(All_isolate_info$cluster == 2)])]
+
+# hierarchical clustering only with A. pullulans
+k <- 5 # number of meaningfull clusters
+
+hc <- hclust(dist(phylo.dist.pul, method = "euclidean"), method = "complete")
+hccut <- as.data.frame(cutree(hc, k = k))
+All_isolate_info$cluster2 <- as.character(hccut[,1][match(All_isolate_info$Isolate_name, rownames(hccut))])
+All_isolate_info$cluster2[which(is.na(All_isolate_info$cluster2))] <- k+1
+
+# naming the clusters
+c_nam <- data.frame(cluster2 = c(1:(k+1)),
+                    c_names = c("clinical pullulans",
+                                "Agricultural A. pullulans (I)", 
+                                "Agricultural A. pullulans (T)",
+                                "A. pul clin own cluster",
+                                "Agricultural A. pullulans (S)", 
+                                "clinical non pullulans"))
+
+
+# Ordering clusters and adding the clusters to the metadata
+c_nam <- mutate(c_nam, c_names = fct_relevel(c_names,  
+                                             "clinical non pullulans",
+                                             "A. pul clin own cluster" ,
+                                             "clinical pullulans",
+                                             "Agricultural A. pullulans (S)", 
+                                             "Agricultural A. pullulans (I)", 
+                                             "Agricultural A. pullulans (T)"
+                                    ))
+
+names(my_col3) <- c_nam$c_names[order(c_nam$c_names)]
+All_isolate_info_c2 <- merge(All_isolate_info, c_nam, by.x = "cluster2", by.y = "cluster2", all.x = T)
+```
+
+
+### Tree rooted with *A. subglaciale*
+```{r, tree-plots_rooted}
+# rooting the three with A. subglaciale
+tree.rooted <- root(tree, which(tree$tip.label == "A. subglaciale"))
+
+# clusters as group info
+group_info <- split(All_isolate_info$Isolate_name, All_isolate_info$cluster)
+tree.rooted <- groupOTU(tree.rooted,group_info)
+
+# plotting the tree pullulans vs non pullulans
+p <- ggtree(tree.rooted, aes(color = group)
+            ) + 
+      theme_tree2() +  
+      # geom_text(aes(label = node)) +
+      # geom_tiplab(hjust = 0, size = 3, vjust = 0.5) +
+      labs(title = "Phylogenetic Tree with all SNP's and all isolates") +
+      xlim(0,1.1)+
+  scale_color_manual(values=c(my_col3)[c(1,2)])
+p + 
+  geom_cladelabel(node=85, label=expression(italic("A. Pullulans")), 
+                  color=c(my_col3)[1], 
+                  offset=.075, align=TRUE
+                  ) +  
+  geom_cladelabel(node=86, label=expression(paste("non ",italic("A. Pullulans"))), 
+                  color=c(my_col3)[2], offset=.075, align=TRUE) 
+
+
+# cluster as group info
+group_info <- split(All_isolate_info_c2$Isolate_name, All_isolate_info_c2$c_names)
+tree.rooted <- groupOTU(tree.rooted,group_info)
+
+
+# plotting tree with all clusters
+p <- ggtree(tree.rooted, aes(color = group)
+            ) + 
+      theme_tree2() +  
+       # geom_text(aes(label = node)) +
+      geom_tiplab(hjust = 0, size = 3, vjust = 0.5) +
+  scale_color_manual(values=c(my_col3))
+
+# plotting tree with collapsed non pullulans clade
+cp <- collapse(p +
+                 geom_nodelab(aes(label = bootstrap), hjust = 1.2, vjust = -0.2, size = 2.5) +
+                 xlim(.225,.325) +
+                 labs(title = expression(paste("Phylogenetic Tree with ", 
+                                               italic("A. Pullulans"), 
+                                               " isolates"))), 
+               node= 86)
+cp  
+
+# plotting tree with collapsed pullulans clade
+cp2 <- collapse(p +
+                 geom_nodelab(aes(label = bootstrap), hjust = 1.2, vjust = -0.2, size = 2.5) +
+                 xlim(0,1) +
+                 labs(title = expression(paste("Phylogenetic Tree with non ", 
+                                               italic("A. Pullulans"), 
+                                               " isolates"))), 
+               node= 85)
+cp2   
+```
+
+### Unrooted Trees
+```{r, tree-plots_unrooted}
+
+# clusters as group info
+group_info <- split(All_isolate_info_c2$Isolate_name, All_isolate_info_c2$c_names)
+tree<- groupOTU(tree,group_info)
+
+# plotting tree with all clusters
+p <- ggtree(tree, aes(color = group)
+            ) + 
+      theme_tree2() +  
+       # geom_text(aes(label = node)) +
+      geom_tiplab(hjust = 0, size = 3, vjust = 0.5) +
+  xlim(0,1.1) +
+  scale_color_manual(values=c(my_col3))
+p
+
+# plotting tree with collapsed non pullulans clade
+cp <- collapse(p +
+                 # geom_nodelab(aes(label = bootstrap), hjust = 1.6, vjust = -0.2, size = 2.5) +
+                 xlim(0,.09) +
+                 labs(title = expression(paste("Phylogenetic Tree with ", 
+                                               italic("A. Pullulans"), 
+                                               " isolates"))), 
+               node= 85)
+cp  
+
+
+cp <- collapse(p +
+                 geom_nodelab(aes(label = bootstrap), hjust = 1.6, vjust = -0.2, size = 2.5) +
+                 xlim(0,.09) +
+                 labs(title = expression(paste("Phylogenetic Tree with ", 
+                                               italic("A. Pullulans"), 
+                                               " isolates"))), 
+               node= 85)
+cp  
+
+# plotting collapsed non pullulans clade
+viewClade(p +
+            geom_nodelab(aes(label = bootstrap), hjust = 1.2, vjust = -0.2, size = 2.5) +
+                 xlim(0,1.1) +
+                 labs(title = expression(paste("Phylogenetic Tree with non ", 
+                                               italic("A. Pullulans"), 
+                                               " isolates"))),
+          node= 85)
+```
+
+### MIC50 significance testing
+```{r, significant testing MIC50}
+# merging MIC50 values with meta data
+All_MIC50_info <- merge(All_MIC50, All_isolate_info_c2[,c(1,2,7,8,9,10)], by.x = "Isolate_ID", by.y = "Isolate_ID", all.x = TRUE)
+
+# log 2 for foldchange in MIC 50 
+All_MIC50_info$MIC50 <- log2(All_MIC50_info$MIC50)
+
+
+
+dunn.df <- matrix(nrow = 15)
+
+for (i in unique(All_MIC50_info$Fungicide)) {
+  dunn.mod <- dunnTest(MIC50 ~ c_names,
+                       data=All_MIC50_info[which(All_MIC50_info$Fungicide == i),], 
+                       method="bh")
+  dunn.df[,1] <- dunn.mod[["res"]][["Comparison"]]
+  dunn.inter <- data.frame(dunn.mod[["res"]][["P.adj"]])
+  colnames(dunn.inter) <- paste("P.adj_", i)
+  dunn.df <- cbind(dunn.df,dunn.inter)
+}
+```
+
+
+### MIC50 boxplots
+```{r, boxplots_MIC50_clusters}
+# Boxplot of the MIC50 values agricultural vs clinical
+ggplot(data = All_MIC50_info, aes (x = group, y = MIC50, col = group)) +
+  geom_boxplot() +
+  facet_wrap(~Fungicide, scales = "free") +
+  stat_compare_means(method = "wilcox.test", aes(label = ifelse(
+    p < 1.e-3,
+    sprintf("Wilcox, p = < 0.001"),
+    sprintf("Wilcox, p = %5.3f", as.numeric(..p.format..)))))
+
+ggplot(data = All_MIC50_info, aes (x = cluster, y = MIC50, col = cluster)) +
+  geom_boxplot() +
+  scale_color_discrete(labels = c("pullulans", "non pullulans"))+
+  facet_wrap(~Fungicide, scales = "free") +
+  stat_compare_means(method = "wilcox.test", aes(label = ifelse(
+    p < 1.e-3,
+    sprintf("Wilcox, p = < 0.001"),
+    sprintf("Wilcox, p = %5.3f", as.numeric(..p.format..)))))
+
+label_dunn <- c("B","B","B","B","A", "A","A",
+            "AB","B","B","B","AB", "A",
+            "C","ABC", "BC","BC","AB", "A")
+
+label_dunn_df <- data.frame(sig_lab = c("B","B","B","B","A", "A",
+                                        "AB","B","B","B","AB", "A",
+                                        "C","ABC", "BC","BC","AB", "A"),
+                            c_names = rep(c("clinical non pullulans",
+                                            "A. pul clin own cluster" ,
+                                            "clinical pullulans",
+                                            "Agricultural A. pullulans (S)", 
+                                            "Agricultural A. pullulans (I)",
+                                            "Agricultural A. pullulans (T)"), times= 3),
+                            Fungicide = c(rep("Captan", times = 6), 
+                                          rep("Cyprodinil", times = 6), 
+                                          rep("Difenoconazole", times = 6)),
+                            MIC50 = c(rep(7, times = 6), 
+                                          rep(7.5, times = 6), 
+                                          rep(3.75, times = 6))
+                            )
+
+# Boxplot of the MIC50 values phylogenetic clusters
+All_MIC50_info%>%
+mutate(c_names = fct_relevel(c_names, 
+                                             "clinical non pullulans",
+                                             "A. pul clin own cluster" ,
+                                             "clinical pullulans",
+                                             "Agricultural A. pullulans (S)", 
+                                             "Agricultural A. pullulans (I)", 
+                                             "Agricultural A. pullulans (T)"
+                                             )) %>%
+
+  
+  ggplot(aes(x = c_names, y = MIC50, colour = c_names)) +
+  geom_boxplot() +
+  facet_wrap(~Fungicide, scales = "free") +
+  theme(legend.position = "none") +
+  # stat_compare_means(method = "kruskal.test", hjust = 0.1, aes(label = ifelse(
+  #   p < 1.e-3,
+  #   sprintf("Kruskal, p = < 0.001"),
+  #   sprintf("Kruskal, p = %5.3f", as.numeric(..p.format..))))) +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust = 1, size = 8))+
+  xlab(NULL)+
+  geom_text(data = label_dunn_df, aes(label = sig_lab, colour = "black"))+
+  scale_color_manual(values=c(my_col3))
+```
+
+### Session info
+```{r, session info}
+devtools::session_info()
+```
