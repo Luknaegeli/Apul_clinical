@@ -1,6 +1,6 @@
 
 
-# Clinical Aureobasidium isolates are more fungicide sensitive than many agricultural isolates
+# Clinical *Aureobasidium* isolates are more fungicide sensitive than many agricultural isolates
 
 
 ## Description
